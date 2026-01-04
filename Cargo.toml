@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+regex = "1.12.2"
+time = { version = "0.3.44", features = ["parsing"] }
+
+[dev-dependencies]
+rstest = "0.26.1"
