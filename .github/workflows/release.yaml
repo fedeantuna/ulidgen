@@ -8,7 +8,6 @@ on:
 
 jobs:
   extract_metadata:
-    if: startsWith(github.ref, 'refs/tags/v')
     name: Extract Metadata
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +25,6 @@ jobs:
       version: ${{ steps.extract_metadata.outputs.version }}
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     name: Release (${{ matrix.job.target }} - ${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
     needs: extract_metadata
@@ -157,7 +155,7 @@ jobs:
           BIN_DIR="target/$TARGET/release"
 
           PKG_FILE_NAME="$NAME-v$VERSION-$TARGET$PKG_SUFFIX"
-          PKG_DIR = "_packages"
+          PKG_DIR="_packages"
 
           mkdir -p "$PKG_DIR"
           case ${TARGET} in
