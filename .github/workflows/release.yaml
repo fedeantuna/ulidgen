@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+
+jobs:
+  extract_metadata:
+    name: Extract Metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Extract Crate Metadata from Cargo.toml
+        id: extract_metadata
+        run: |
+          cargo metadata --no-deps --format-version 1 | jq -r '"version=" + .packages[0].name' >> $GITHUB_OUTPUT
+          cargo metadata --no-deps --format-version 1 | jq -r '"version=" + .packages[0].version' >> $GITHUB_OUTPUT
+
+    outputs:
+      name: ${{ steps.extract_metadata.outputs.name }}
+      version: ${{ steps.extract_metadata.outputs.version }}
+
+  release:
+    name: Release (${{ matrix.job.target }} - ${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
+    needs: extract_metadata
+    env:
+      BUILD_CMD: "${{ matrix.job.use-cross && 'cross' || 'cargo' }}"
+      TARGET: ${{ matrix.job.target }}
+      NAME: ${{ needs.extract_metadata.outputs.name }}
+      VERSION: ${{ needs.extract_metadata.outputs.version }}
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+              target: aarch64-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: aarch64-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: arm-unknown-linux-gnueabihf,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: arm-unknown-linux-musleabihf,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: i686-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: i686-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: x86_64-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - { target: aarch64-apple-darwin, os: macos-15, use-cross: false }
+          - {
+              target: aarch64-pc-windows-msvc,
+              os: windows-11-arm,
+              use-cross: false,
+            }
+          - { target: i686-pc-windows-msvc, os: windows-2025, use-cross: false }
+          - {
+              target: x86_64-pc-windows-msvc,
+              os: windows-2025,
+              use-cross: false,
+            }
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
+        with:
+          toolchain: stable
+          targets: ${{ matrix.job.target }}
+
+      - name: Verify Release Version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION="$VERSION"
+
+          echo "Tag version:    v$TAG_VERSION"
+          echo "Cargo version:  v$CARGO_VERSION"
+
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "❌ Version Mismatch!"
+            exit 1
+          fi
+
+          echo "✅ Version Match!"
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install cross
+        if: matrix.job.use-cross
+        shell: bash
+        run: cargo binstall cross --no-confirm
+
+      - name: Install git-cliff
+        shell: bash
+        run: cargo binstall git-cliff --no-confirm
+
+      - name: Build Binary
+        shell: bash
+        run: $BUILD_CMD build --locked --release --target="$TARGET"
+
+      - name: Create Package
+        id: pkg
+        shell: bash
+        run: |
+          BIN_SUFFIX=""
+          PKG_SUFFIX=".tar.gz"
+          case ${TARGET} in
+            *-pc-windows-*)
+              BIN_SUFFIX=".exe"
+              PKG_SUFFIX=".zip"
+            ;;
+          esac;
+
+          BIN_NAME="$NAME$BIN_SUFFIX"
+          BIN_DIR="target/$TARGET/release"
+
+          PKG_FILE_NAME="$NAME-v$VERSION-$TARGET$PKG_SUFFIX"
+          PKG_DIR = "_packages"
+
+          mkdir -p "$PKG_DIR"
+          case ${TARGET} in
+            *-pc-windows-*)
+              zip -j "$PKG_DIR/$PKG_FILE_NAME" "$BIN_DIR/$BIN_NAME"
+            ;;
+            *)
+              tar -cvzf "$PKG_DIR/$PKG_FILE_NAME" -C "$BIN_DIR" "$BIN_NAME"
+            ;;
+          esac;
+
+          echo "PKG_PATH=$PKG_DIR/$PKG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Attest Package
+        uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8
+        with:
+          subject-path: ${{ steps.pkg.outputs.PKG_PATH }}
+
+      - name: Generate Changelog
+        shell: bash
+        run: git-cliff --current --tag "v$VERSION" > RELEASE_CHANGELOG.md
+
+      - name: Publish Package
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b
+        with:
+          body_path: RELEASE_CHANGELOG.md
+          files: ${{ steps.pkg.outputs.PKG_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

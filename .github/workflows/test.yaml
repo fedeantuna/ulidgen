@@ -1,0 +1,109 @@
+name: Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.job.target }} - ${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
+    env:
+      BUILD_CMD: "${{ matrix.job.use-cross && 'cross' || 'cargo' }}"
+      TARGET: ${{ matrix.job.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+              target: aarch64-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: aarch64-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: arm-unknown-linux-gnueabihf,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: arm-unknown-linux-musleabihf,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: i686-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: i686-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - {
+              target: x86_64-unknown-linux-musl,
+              os: ubuntu-24.04,
+              use-cross: true,
+            }
+          - { target: aarch64-apple-darwin, os: macos-15, use-cross: false }
+          - {
+              target: aarch64-pc-windows-msvc,
+              os: windows-11-arm,
+              use-cross: false,
+            }
+          - { target: i686-pc-windows-msvc, os: windows-2025, use-cross: false }
+          - {
+              target: x86_64-pc-windows-msvc,
+              os: windows-2025,
+              use-cross: false,
+            }
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
+        with:
+          toolchain: stable
+          targets: ${{ matrix.job.target }}
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Cross
+        if: matrix.job.use-cross
+        shell: bash
+        run: cargo binstall cross --no-confirm
+
+      - name: Run Tests
+        shell: bash
+        run: $BUILD_CMD test --locked --target="${TARGET}"
+
+      - name: Verify Release Version
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')"
+
+          echo "Tag version:    v$TAG_VERSION"
+          echo "Cargo version:  v$CARGO_VERSION"
+
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            exit 1
+          fi
+
+          echo "✅ Version matches"
