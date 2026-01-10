@@ -8,6 +8,7 @@ on:
 
 jobs:
   extract_metadata:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     name: Extract Metadata
     runs-on: ubuntu-latest
     steps:
@@ -17,7 +18,7 @@ jobs:
       - name: Extract Crate Metadata from Cargo.toml
         id: extract_metadata
         run: |
-          cargo metadata --no-deps --format-version 1 | jq -r '"version=" + .packages[0].name' >> $GITHUB_OUTPUT
+          cargo metadata --no-deps --format-version 1 | jq -r '"name=" + .packages[0].name' >> $GITHUB_OUTPUT
           cargo metadata --no-deps --format-version 1 | jq -r '"version=" + .packages[0].version' >> $GITHUB_OUTPUT
 
     outputs:
@@ -25,6 +26,7 @@ jobs:
       version: ${{ steps.extract_metadata.outputs.version }}
 
   release:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     name: Release (${{ matrix.job.target }} - ${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
     needs: extract_metadata
@@ -158,16 +160,9 @@ jobs:
           PKG_DIR="_packages"
 
           mkdir -p "$PKG_DIR"
-          case ${TARGET} in
-            *-pc-windows-*)
-              zip -j "$PKG_DIR/$PKG_FILE_NAME" "$BIN_DIR/$BIN_NAME"
-            ;;
-            *)
-              tar -cvzf "$PKG_DIR/$PKG_FILE_NAME" -C "$BIN_DIR" "$BIN_NAME"
-            ;;
-          esac;
+          tar -cvaf "$PKG_DIR/$PKG_FILE_NAME" -C "$BIN_DIR" "$BIN_NAME"
 
-          echo "PKG_PATH=$PKG_DIR/$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "PKG_PATH=$PKG_DIR/$PKG_FILE_NAME" >> $GITHUB_OUTPUT
 
       - name: Attest Package
         uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8
