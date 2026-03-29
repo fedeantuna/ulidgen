@@ -12,7 +12,7 @@ repository = "https://github.com/fedeantuna/ulidgen"
 
 [dependencies]
 regex = "1.12.2"
-time = { version = "0.3.44", features = ["parsing"] }
+time = { version = "0.3.47", features = ["parsing"] }
 ulid = "1.2.1"
 
 [dev-dependencies]
