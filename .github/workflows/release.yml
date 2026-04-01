@@ -167,7 +167,7 @@ jobs:
           echo "PKG_PATH=$PKG_DIR/$PKG_FILE_NAME" >> $GITHUB_OUTPUT
 
       - name: Attest Package
-        uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: ${{ steps.pkg.outputs.PKG_PATH }}
 
